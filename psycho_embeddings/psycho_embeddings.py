@@ -81,7 +81,7 @@ class GPT2Embedder:
         def tokenize_text(examples):
             return self.tokenizer(examples["text"], padding="max_length", truncation=True, max_length=max_seq_length)
 
-        datasets.set_progress_bar_enabled = False
+        datasets.set_progress_bar_enabled(False)
         # tokenize the corpus
         dataset = dataset.map(tokenize_text, batched=True, desc="Tokenizing", remove_columns=["text"])
         return dataset
@@ -152,7 +152,7 @@ class BERTEmbedder:
                                   padding="max_length",
                                   truncation=True, max_length=max_seq_length)
 
-        datasets.set_progress_bar_enabled = False
+        datasets.set_progress_bar_enabled(False)
         # tokenize the corpus
         dataset = dataset.map(tokenize_text, batched=True, desc="Tokenizing", remove_columns=["text"])
         return dataset
