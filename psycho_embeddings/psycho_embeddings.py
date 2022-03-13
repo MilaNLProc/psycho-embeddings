@@ -5,6 +5,7 @@ from datasets import Dataset
 from tqdm import tqdm
 import numpy as np
 from psycho_embeddings.feature_extractor import NewFeatureExtractionPipeline
+import datasets
 
 
 def find_sub_list(sl, l):
@@ -80,6 +81,7 @@ class GPT2Embedder:
         def tokenize_text(examples):
             return self.tokenizer(examples["text"], padding="max_length", truncation=True, max_length=max_seq_length)
 
+        datasets.set_progress_bar_enabled = False
         # tokenize the corpus
         dataset = dataset.map(tokenize_text, batched=True, desc="Tokenizing", remove_columns=["text"])
         return dataset
@@ -146,8 +148,11 @@ class BERTEmbedder:
         dataset = Dataset.from_dict(d)
 
         def tokenize_text(examples):
-            return self.tokenizer(examples["text"], padding="max_length", truncation=True, max_length=max_seq_length)
+            return self.tokenizer(examples["text"],
+                                  padding="max_length",
+                                  truncation=True, max_length=max_seq_length)
 
+        datasets.set_progress_bar_enabled = False
         # tokenize the corpus
         dataset = dataset.map(tokenize_text, batched=True, desc="Tokenizing", remove_columns=["text"])
         return dataset
