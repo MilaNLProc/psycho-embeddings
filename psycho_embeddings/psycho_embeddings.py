@@ -24,7 +24,7 @@ class GPT2Embedder:
         self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
         self.model = AutoModel.from_pretrained("gpt2", output_hidden_states=True)
         self.feature = NewFeatureExtractionPipeline(layer=layer, model=self.model, tokenizer=self.tokenizer)
-
+        self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 
     def get_single_embedding(self, word: str):
 
@@ -36,7 +36,7 @@ class GPT2Embedder:
 
         return embedding_start, embedding_middle
 
-    def get_embedding_from_dataset(self, word: str, texts: List[str], **kwargs):
+    def get_embedding_from_dataset(self, words: List[str], texts: List[str], **kwargs):
         max_seq_length = kwargs.get("max_seq_length", 200)
 
         dataset = self._tokenize_dataset(texts, max_seq_length)
@@ -44,14 +44,14 @@ class GPT2Embedder:
 
         features_from_model = self.feature(texts)
 
-        tok_word_middle = self.tokenizer(f" {word}", add_special_tokens=False)
-        tok_word_start = self.tokenizer(word, add_special_tokens=False)
-
         which_tokenization = []
-        for t in texts:
+        for word, t in zip(words, texts):
+
             if t.split()[0] == word:
+                tok_word_start = self.tokenizer(word, add_special_tokens=False)
                 which_tokenization.append(tok_word_start)
             else:
+                tok_word_middle = self.tokenizer(f" {word}", add_special_tokens=False)
                 which_tokenization.append(tok_word_middle)
 
         idx = [
@@ -69,9 +69,9 @@ class GPT2Embedder:
             embeddings.append(word_embeddings)
 
         # average over the dataset
-        embedding = np.mean(embeddings, axis=0)
+        #embedding = np.mean(embeddings, axis=0)
 
-        return embedding
+        return embeddings
 
     def _tokenize_dataset(self, texts, max_seq_length):
         d = {"text": texts}
@@ -109,7 +109,7 @@ class BERTEmbedder:
 
         return embedding_start
 
-    def get_embedding_from_dataset(self, word: str, texts: List[str], **kwargs):
+    def get_embedding_from_dataset(self, words: List[str], texts: List[str], **kwargs):
         max_seq_length = kwargs.get("max_seq_length", 200)
 
         dataset = self._tokenize_dataset(texts, max_seq_length)
@@ -117,11 +117,10 @@ class BERTEmbedder:
 
         features_from_model = self.feature(texts)
 
-        tok_word_start = self.tokenizer(word, add_special_tokens=False)
-
         which_tokenization = []
-        for t in texts:
-                which_tokenization.append(tok_word_start)
+        for word in words:
+            tok_word_start = self.tokenizer(word, add_special_tokens=False)
+            which_tokenization.append(tok_word_start)
 
         idx = [
             find_sub_list(tok_word["input_ids"], input_ids.tolist())[0]
