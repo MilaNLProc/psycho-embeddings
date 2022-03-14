@@ -38,7 +38,7 @@ class GPT2Embedder:
         return embedding_start, embedding_middle
 
     def get_embedding_from_dataset(self, words: List[str], texts: List[str], **kwargs):
-        max_seq_length = kwargs.get("max_seq_length", 200)
+        max_seq_length = kwargs.get("max_seq_length", 500)
 
         dataset = self._tokenize_dataset(texts, max_seq_length)
         dataset.set_format("pt")
@@ -112,7 +112,7 @@ class BERTEmbedder:
         return embedding_start
 
     def get_embedding_from_dataset(self, words: List[str], texts: List[str], **kwargs):
-        max_seq_length = kwargs.get("max_seq_length", 200)
+        max_seq_length = kwargs.get("max_seq_length", 500)
 
         dataset = self._tokenize_dataset(texts, max_seq_length)
         dataset.set_format("pt")
