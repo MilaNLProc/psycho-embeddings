@@ -21,11 +21,15 @@ def find_sub_list(sl, l):
 
 class GPT2Embedder:
 
-    def __init__(self, layer):
+    def __init__(self, layer:int, device:int = 0):
         self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
-        self.model = AutoModel.from_pretrained("gpt2", output_hidden_states=True)
-        self.feature = NewFeatureExtractionPipeline(layer=layer, model=self.model, tokenizer=self.tokenizer)
+        self.model = AutoModel.from_pretrained("gpt2", output_hidden_states=True).to("cuda")
+        self.device = device
+
+
+        self.feature = NewFeatureExtractionPipeline(layer=layer, model=self.model, tokenizer=self.tokenizer, device=device)
         self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+
 
     def get_single_embedding(self, word: str):
 
@@ -89,19 +93,19 @@ class GPT2Embedder:
 
 class BERTEmbedder:
 
-    def __init__(self, layer: int, size:str ="base"):
+    def __init__(self, layer: int, size:str ="base", device:int = 0):
         super().__init__()
-
+        self.device = device
         if size == "base":
             self.tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-            self.model = AutoModel.from_pretrained("bert-base-uncased", output_hidden_states=True)
+            self.model = AutoModel.from_pretrained("bert-base-uncased", output_hidden_states=True).to("cuda")
         elif size == "large":
             self.tokenizer = AutoTokenizer.from_pretrained("bert-large-uncased")
-            self.model = AutoModel.from_pretrained("bert-large-uncased", output_hidden_states=True)
+            self.model = AutoModel.from_pretrained("bert-large-uncased", output_hidden_states=True).to("cuda")
         else:
             raise NotImplemented()
 
-        self.feature = NewFeatureExtractionPipeline(layer=layer, model=self.model, tokenizer=self.tokenizer)
+        self.feature = NewFeatureExtractionPipeline(layer=layer, model=self.model, tokenizer=self.tokenizer, device=self.device)
 
     def get_single_embedding(self, word: str):
 
