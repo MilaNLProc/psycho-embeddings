@@ -2,11 +2,18 @@ from transformers import AutoTokenizer, AutoModel
 import torch
 from typing import List
 from datasets import Dataset
-from tqdm import tqdm
 import numpy as np
 from psycho_embeddings.feature_extractor import NewFeatureExtractionPipeline
 import datasets
 
+
+def crop_string(text, word, x):
+    text = text.lower()
+    word = word.lower()
+
+    splitted = text.split()
+
+    return " ".join(splitted[0: splitted.index(word) + 1])
 
 def find_sub_list(sl, l):
     results = list()
@@ -72,9 +79,6 @@ class GPT2Embedder:
             if len(word_embeddings) > 1:
                 word_embeddings = np.mean(word_embeddings, axis=0)
             embeddings.append(word_embeddings)
-
-        # average over the dataset
-        #embedding = np.mean(embeddings, axis=0)
 
         return embeddings
 
@@ -142,10 +146,7 @@ class BERTEmbedder:
                 word_embeddings = np.mean(word_embeddings, axis=0)
             embeddings.append(word_embeddings)
 
-        # average over the dataset
-        embedding = np.mean(embeddings, axis=0)
-
-        return embedding
+        return embeddings
 
     def _tokenize_dataset(self, texts, max_seq_length):
         d = {"text": texts}
