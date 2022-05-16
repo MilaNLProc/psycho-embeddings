@@ -1,6 +1,7 @@
 from typing import Dict
 from transformers.pipelines.base import GenericTensor, Pipeline
 
+
 class NewFeatureExtractionPipeline(Pipeline):
     """
     Feature extraction pipeline using no model head. This pipeline extracts the hidden states from the base
