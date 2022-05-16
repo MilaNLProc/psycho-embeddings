@@ -89,7 +89,10 @@ class GPT2Embedder:
         def tokenize_text(examples):
             return self.tokenizer(examples["text"], padding="max_length", truncation=True, max_length=max_seq_length)
 
-        datasets.set_progress_bar_enabled(False)
+        try:
+            datasets.set_progress_bar_enabled(False)
+        except:
+            datasets.logging.disable_progress_bar()
         # tokenize the corpus
         dataset = dataset.map(tokenize_text, batched=True, desc="Tokenizing", remove_columns=["text"])
         return dataset
@@ -97,36 +100,56 @@ class GPT2Embedder:
 
 class BERTEmbedder:
 
-    def __init__(self, layer: int, size:str ="base", device:int = 0):
+    def __init__(self, size: str = "base", device: int = 0):
         super().__init__()
         self.device = device
+        
         if size == "base":
             self.tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-            self.model = AutoModel.from_pretrained("bert-base-uncased", output_hidden_states=True).to("cuda")
+            self.model = AutoModel.from_pretrained("bert-base-uncased", output_hidden_states=True).to(device)
         elif size == "large":
             self.tokenizer = AutoTokenizer.from_pretrained("bert-large-uncased")
-            self.model = AutoModel.from_pretrained("bert-large-uncased", output_hidden_states=True).to("cuda")
+            self.model = AutoModel.from_pretrained("bert-large-uncased", output_hidden_states=True).to(device)
         else:
             raise NotImplemented()
 
-        self.feature = NewFeatureExtractionPipeline(layer=layer, model=self.model, tokenizer=self.tokenizer, device=self.device)
+        self.feature = NewFeatureExtractionPipeline(model=self.model, tokenizer=self.tokenizer, device=self.device)
 
-    def get_single_embedding(self, word: str):
 
-        embedding_start = self.feature([f"{word}"])
+    def get_single_embedding(self, word: str, layer: int = None):
+        """
+        Get a single word embedding. The first row corresponds to the word embedding layer in BERT.
+        
+        Params:
+            word: str
+            layer: int. Optional, use to extract single layer embedding
+        
+        Return:
+            torch.tensor. Shape: (num_layers + 1, hidden size) if layer is None, (hidden_size) otherwise
+        """
+        embedding_start = self.feature(word)
+        embedding_start = torch.cat(embedding_start)
+        
+        # mean across subtokens
+        embedding_start = embedding_start[:, 1:-1, :].mean(1)
 
-        embedding_start = np.mean(embedding_start[0][0], axis=0)
-
+        if layer:
+            embedding_start = embedding_start[layer, :]
+        
         return embedding_start
+    
 
-    def get_embedding_from_dataset(self, words: List[str], texts: List[str], **kwargs):
-        max_seq_length = kwargs.get("max_seq_length", 500)
-
-        dataset = self._tokenize_dataset(texts, max_seq_length)
-        dataset.set_format("pt")
-
+    def get_embedding_from_dataset(self, words, texts: List[str], **kwargs):
+        """
+        Find the embedding of word_i in texts_i, averaging the embeddings across subtokens.
+        """
+        
+        # tokenize all texts
+        max_seq_length = kwargs.get("max_seq_length", 512)
+        dataset = self.tokenize_dataset(texts, max_seq_length)
         features_from_model = self.feature(texts)
 
+        # tokenize individual words
         which_tokenization = []
         for word in words:
             tok_word_start = self.tokenizer(word, add_special_tokens=False)
@@ -148,20 +171,31 @@ class BERTEmbedder:
 
         return embeddings
 
-    def _tokenize_dataset(self, texts, max_seq_length):
+
+    def tokenize_dataset(self, texts, max_seq_length=512):
         d = {"text": texts}
         dataset = Dataset.from_dict(d)
 
         def tokenize_text(examples):
-            return self.tokenizer(examples["text"],
-                                  padding="max_length",
-                                  truncation=True, max_length=max_seq_length)
+            return self.tokenizer(
+                examples["text"],
+                padding="max_length",
+                truncation=True,
+                max_length=max_seq_length
+        )
 
-        datasets.set_progress_bar_enabled(False)
-        # tokenize the corpus
+        try:
+            datasets.set_progress_bar_enabled(False)
+        except:
+            datasets.logging.disable_progress_bar()
+            
         dataset = dataset.map(tokenize_text, batched=True, desc="Tokenizing", remove_columns=["text"])
+        dataset.set_format("pt")
         return dataset
 
+    
+
+    
 class BaseHFEmbedder:
 
     def __init__(self):
@@ -170,8 +204,6 @@ class BaseHFEmbedder:
 
     def get_single_embedding(self, sentence: str, word: str, layer: int):
         tok_sentence = self.tokenizer([sentence], return_tensors="pt")
-
-
 
         tok_word = self.tokenizer(word, add_special_tokens=False)
 
