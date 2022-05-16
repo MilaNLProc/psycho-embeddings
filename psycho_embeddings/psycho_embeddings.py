@@ -1,6 +1,6 @@
 from transformers import AutoTokenizer, AutoModel
 import torch
-from typing import List
+from typing import List, Tuple
 from datasets import Dataset
 import numpy as np
 from psycho_embeddings.feature_extractor import NewFeatureExtractionPipeline
@@ -150,39 +150,50 @@ class BERTEmbedder:
 
         return embedding_start
 
-    def get_embedding_from_dataset(self, words, texts: List[str], **kwargs):
+    def get_tokens(self, words, texts):
+        tokenized_words = self._tokenize_words(words)
+        tokenized_texts = self._tokenize_texts(texts)
+        return tokenized_words, tokenized_texts
+
+    def embed(self, texts) -> List[Tuple[torch.Tensor]]:
+        """
+        Extract embeddings with model.
+
+        Returns:
+            list of tuples, one per text. Each tuple has (1 + num_layers) elements
+        """
+        features_from_model = self.feature(texts)
+        return features_from_model
+
+    def get_embedding_from_dataset(self, tokenized_words, tokenized_texts, features):
         """
         Find the embedding of word_i in texts_i, averaging the embeddings across subtokens.
         """
-
-        # tokenize all texts
-        max_seq_length = kwargs.get("max_seq_length", 512)
-        dataset = self.tokenize_dataset(texts, max_seq_length)
-        features_from_model = self.feature(texts)
-
-        # tokenize individual words
-        which_tokenization = []
-        for word in words:
-            tok_word_start = self.tokenizer(word, add_special_tokens=False)
-            which_tokenization.append(tok_word_start)
+        assert len(tokenized_words) == len(tokenized_texts)
 
         idx = [
             find_sub_list(tok_word["input_ids"], input_ids.tolist())[0]
-            for tok_word, input_ids in zip(which_tokenization, dataset["input_ids"])
+            for tok_word, input_ids in zip(
+                tokenized_words, tokenized_texts["input_ids"]
+            )
         ]
 
         # average over sub tokens
         embeddings = list()
-
-        for hs, (l_idx, r_idx) in zip(features_from_model, idx):
-            word_embeddings = hs[0][l_idx:r_idx]
-            if len(word_embeddings) > 1:
-                word_embeddings = np.mean(word_embeddings, axis=0)
+        for hs, (l_idx, r_idx) in zip(features, idx):
+            word_embeddings = hs[0, l_idx:r_idx, :]
+            if word_embeddings.shape[0] > 1:
+                word_embeddings = word_embeddings.mean(0).unsqueeze(0)
             embeddings.append(word_embeddings)
 
+        embeddings = torch.cat(embeddings)
         return embeddings
 
-    def tokenize_dataset(self, texts, max_seq_length=512):
+    def _tokenize_words(self, words: List[str]):
+        tokenized_words = [self.tokenizer(w, add_special_tokens=False) for w in words]
+        return tokenized_words
+
+    def _tokenize_texts(self, texts, max_seq_length=512) -> datasets.Dataset:
         d = {"text": texts}
         dataset = Dataset.from_dict(d)
 

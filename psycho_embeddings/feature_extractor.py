@@ -34,8 +34,7 @@ class NewFeatureExtractionPipeline(Pipeline):
             the associated CUDA device id.
     """
 
-    def __init__(self, layer, **kwargs):
-        self.layer = layer
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
     def _sanitize_parameters(self, truncation=None, **kwargs):
@@ -49,7 +48,9 @@ class NewFeatureExtractionPipeline(Pipeline):
         if truncation is None:
             kwargs = {}
         else:
-            kwargs = {"truncation": truncation}
+            kwargs = {
+                "truncation": truncation,
+            }
         model_inputs = self.tokenizer(inputs, return_tensors=return_tensors, **kwargs)
         return model_inputs
 
