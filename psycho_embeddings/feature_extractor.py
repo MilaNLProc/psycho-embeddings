@@ -60,10 +60,7 @@ class NewFeatureExtractionPipeline(Pipeline):
 
     def postprocess(self, model_outputs):
         # [0] is the first available tensor, logits or last_hidden_state.
-        if self.framework == "pt":
-            return model_outputs["hidden_states"]
-        elif self.framework == "tf":
-            return model_outputs["hidden_states"]
+        return model_outputs["hidden_states"]
 
     def __call__(self, *args, **kwargs):
         """
