@@ -1,6 +1,7 @@
 from typing import Dict
 from transformers.pipelines.base import GenericTensor, Pipeline
 
+
 class NewFeatureExtractionPipeline(Pipeline):
     """
     Feature extraction pipeline using no model head. This pipeline extracts the hidden states from the base
@@ -33,8 +34,7 @@ class NewFeatureExtractionPipeline(Pipeline):
             the associated CUDA device id.
     """
 
-    def __init__(self, layer, **kwargs):
-        self.layer = layer
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
     def _sanitize_parameters(self, truncation=None, **kwargs):
@@ -48,7 +48,9 @@ class NewFeatureExtractionPipeline(Pipeline):
         if truncation is None:
             kwargs = {}
         else:
-            kwargs = {"truncation": truncation}
+            kwargs = {
+                "truncation": truncation,
+            }
         model_inputs = self.tokenizer(inputs, return_tensors=return_tensors, **kwargs)
         return model_inputs
 
@@ -58,11 +60,7 @@ class NewFeatureExtractionPipeline(Pipeline):
 
     def postprocess(self, model_outputs):
         # [0] is the first available tensor, logits or last_hidden_state.
-        if self.framework == "pt":
-
-            return model_outputs["hidden_states"][self.layer].numpy().tolist()
-        elif self.framework == "tf":
-            return model_outputs["hidden_states"][self.layer].numpy().tolist()
+        return model_outputs["hidden_states"]
 
     def __call__(self, *args, **kwargs):
         """
