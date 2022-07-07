@@ -133,9 +133,10 @@ class BERTEmbedder(BaseHFEmbedder):
         Return:
             torch.tensor. Shape: (num_layers + 1, hidden size) if layer is None, (hidden_size) otherwise
         """
+        # sanity checks
         if len(word.split(" ")) > 1:
             raise ValueError("Use this method to encode single words.")
-        if layer < 0 or layer > 12:
+        if layer is not None and (layer < 0 or layer > 12):
             raise ValueError("Layer index not within [0, 12]")
         if word and context and word not in context:
             raise ValueError("Word must be in the context.")
@@ -153,6 +154,7 @@ class BERTEmbedder(BaseHFEmbedder):
             return embedding_start
 
         else:  # contextualized embedding
+
             if not isinstance(word, list):
                 word = [word]
             if not isinstance(context, list):
@@ -161,17 +163,26 @@ class BERTEmbedder(BaseHFEmbedder):
             tokenized_word, tokenized_context = self.get_tokens(word, context)
             features = self.embed([context])
 
-            if layer is not None and layer >= 0:
-                features = [f[layer] for f in features]
-
-            embedding = self.get_embedding_from_dataset(
-                tokenized_word, tokenized_context, features
+            layers = (
+                [layer]
+                if layer is not None
+                else list(np.arange(self.model.config.num_hidden_layers + 1))
             )
 
-            if embedding.shape[0] == 1:
-                embedding = embedding.squeeze(0)
+            embeddings = list()
+            for layer in layers:
+                layer_features = [f[layer] for f in features]
+                embedding = self.get_embedding_from_dataset(
+                    tokenized_word, tokenized_context, layer_features
+                )
+                embeddings.append(embedding)
 
-            return embedding
+            if len(embeddings) == 1:  # a single layer was requested
+                embeddings = embeddings[0].squeeze(0)
+            else:
+                embeddings = torch.cat(embeddings)
+
+            return embeddings
 
     def get_embedding_from_dataset(
         self,
