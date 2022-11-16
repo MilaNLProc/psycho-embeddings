@@ -5,6 +5,7 @@ from tqdm import tqdm
 from collections import defaultdict
 from typing import List
 import pandas as pd
+import torch
 
 
 class ContextualizedEmbedder:
@@ -36,21 +37,24 @@ class ContextualizedEmbedder:
         words: List[str],
         layers_id: List[int],
         batch_size: int,
+        show_progress: bool = True,
         *,
         averaging: bool = False,
+        return_static: bool = False
     ):
         """Generate contextualized embeddings of words in contexts.
-        
         
         Args:
             target_texts List[str]: list of texts to use as contexts
             words List[int]: list of words to extract contextualized embeddings of 
             layers_id List[int]: layers of interest
-            averaging (bool): if words are composed of sub-tokens, return the average between them. Default = False
+            averaging (bool): if words are composed of sub-tokens, return the average between them. If set to false, we use the embedding of the
+            first sub-token. Default: False
+            return_static (bool): returns the static word embedding before positional and token_type summation. Default: False
         
         Returns:
             Dict[int, List[numpy.array]]: for each integer in 'layers_id', return a list of numpy arrays each corresponding to the contextualized
-            embedding of the word in 'words' at that layer.
+            embedding of the word in 'words' at that layer. When computed, static word embeddings, have index -1.
         
         """
 
@@ -71,13 +75,13 @@ class ContextualizedEmbedder:
 
             return examples
 
-        encoded_test = test_dataset.map(tokenizer_function, remove_columns=["text", "words"])
+        encoded_test = test_dataset.map(tokenizer_function, remove_columns=["text", "words"], desc="Text tokenization")
         encoded_test.set_format("pt")
 
         dl = DataLoader(encoded_test, batch_size=batch_size, shuffle=False, pin_memory=True)
 
         embs = defaultdict(list)
-        pbar = tqdm(total=len(dl), position=0)
+        pbar = tqdm(total=len(dl), position=0, disable=not show_progress)
 
         for batch in dl:
             
@@ -108,6 +112,21 @@ class ContextualizedEmbedder:
                 else:
                     for embedded_sentence_tokens, (l_idx, r_idx) in zip(layer_features, idx):
                         embs[layer].append(embedded_sentence_tokens[l_idx:l_idx+1, :].mean(0).detach().cpu().numpy())
-
+                        
+                        
+            if return_static:
+                word_embeddings = self.model.get_input_embeddings()
+                
+                for tok_word in words_ids:
+                    w_ids = self.subset_of_tokenized(tok_word.tolist()) + [2, 3]
+                    w_embs = word_embeddings(torch.LongTensor(w_ids))
+                    
+                    if averaging:
+                        embs[-1].append(w_embs.mean(0).detach().cpu().numpy())
+                    else:
+                        embs[-1].append(w_embs[0].detach().cpu().numpy())
+            
         pbar.close()
+        
+       
         return embs
