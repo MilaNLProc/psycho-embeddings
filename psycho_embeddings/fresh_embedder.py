@@ -40,7 +40,8 @@ class ContextualizedEmbedder:
         show_progress: bool = True,
         *,
         averaging: bool = False,
-        return_static: bool = False
+        return_static: bool = False,
+        add_special_tokens: bool = True
     ):
         """Generate contextualized embeddings of words in contexts.
         
@@ -146,7 +147,8 @@ class ContextualizedEmbedder:
                     max_length=20,
                     padding="max_length",
                     truncation=True,
-                    add_special_tokens=False
+                    add_special_tokens=add_special_tokens,
+                    return_special_tokens_mask=add_special_tokens
                 ),
                 remove_columns=["words"],
                 desc="Text tokenization",
@@ -158,24 +160,39 @@ class ContextualizedEmbedder:
             pbar = tqdm(total=len(dl), position=0, disable=not show_progress)
             
             for batch in dl:
+                special_tokens_count = (
+                    batch.pop("special_tokens_mask")[0].sum() - (batch["input_ids"][0] == self.tokenizer.pad_token_id).sum()
+                ).item()
 
                 batch = {k: v.to(self.device) for k, v in batch.items()}
                 features = self.model(**batch)["hidden_states"]
-
+                
                 for layer in layers_id:
                     layer_features = features[layer] # bs, seq_length, hidden_size
-
+                    
                     for layer_feat, attn_mask in zip(layer_features, batch["attention_mask"]):
-                        input_len = attn_mask.sum().item()
-                        emb = layer_feat[:input_len].mean(0) if averaging else layer_feat[0]
+                        if add_special_tokens:
+                            l_idx = 1
+                            r_idx = l_idx + attn_mask.sum().item() - special_tokens_count
+                        else:
+                            l_idx = 0
+                            r_idx = attn_mask.sum().item()
+                        
+                        emb = layer_feat[l_idx:r_idx].mean(0) if averaging else layer_feat[0]
                         embs[layer].append(emb.detach().cpu().numpy())
 
                 if return_static:
                     word_embeddings = self.model.get_input_embeddings()
 
                     for tok_word, attn_mask in zip(batch["input_ids"], batch["attention_mask"]):
-                        input_len = attn_mask.sum().item()
-                        w_ids = tok_word[:input_len]
+                        if add_special_tokens:
+                            l_idx = 1
+                            r_idx = l_idx + attn_mask.sum().item() - special_tokens_count
+                        else:
+                            l_idx = 0
+                            r_idx = attn_mask.sum().item()
+    
+                        w_ids = tok_word[l_idx:r_idx]
                         w_embs = word_embeddings(w_ids)
 
                         if averaging:
