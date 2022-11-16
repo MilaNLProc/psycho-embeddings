@@ -19,6 +19,7 @@ class ContextualizedEmbedder:
     def find_sub_list(self, sl, l):
         results = list()
         sll = len(sl)
+        
         for ind in (i for i, e in enumerate(l) if e == sl[0]):
             if l[ind: ind + sll] == sl:
                 results.append((ind, ind + sll))
@@ -29,8 +30,29 @@ class ContextualizedEmbedder:
         idx = list_of_tokens.index(self.tokenizer.pad_token_id)
         return list_of_tokens[0:idx]
 
-    def embed(self, target_texts: List[str], words: List[str], layers_id: List[int], batch_size:int, *,
-              averaging: bool = False):
+    def embed(
+        self,
+        target_texts: List[str],
+        words: List[str],
+        layers_id: List[int],
+        batch_size: int,
+        *,
+        averaging: bool = False,
+    ):
+        """Generate contextualized embeddings of words in contexts.
+        
+        
+        Args:
+            target_texts List[str]: list of texts to use as contexts
+            words List[int]: list of words to extract contextualized embeddings of 
+            layers_id List[int]: layers of interest
+            averaging (bool): if words are composed of sub-tokens, return the average between them. Default = False
+        
+        Returns:
+            Dict[int, List[numpy.array]]: for each integer in 'layers_id', return a list of numpy arrays each corresponding to the contextualized
+            embedding of the word in 'words' at that layer.
+        
+        """
 
         words = [f" {word.strip()}" for word in words]
 
@@ -52,16 +74,19 @@ class ContextualizedEmbedder:
         encoded_test = test_dataset.map(tokenizer_function, remove_columns=["text", "words"])
         encoded_test.set_format("pt")
 
-        dl = DataLoader(encoded_test, batch_size=batch_size)
+        dl = DataLoader(encoded_test, batch_size=batch_size, shuffle=False, pin_memory=True)
 
         embs = defaultdict(list)
         pbar = tqdm(total=len(dl), position=0)
 
         for batch in dl:
+            
             words_ids = batch["words_input_ids"]
             pbar.update(1)
             del batch["words_input_ids"]
-
+            
+            assert words_ids.shape[0] == batch["input_ids"].shape[0]
+            
             batch = {k: v.to(self.device) for k, v in batch.items()}
 
             features = self.model(**batch)["hidden_states"]
