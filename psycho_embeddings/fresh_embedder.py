@@ -33,10 +33,10 @@ class ContextualizedEmbedder:
 
     def embed(
         self,
-        target_texts: List[str],
         words: List[str],
         layers_id: List[int],
         batch_size: int,
+        target_texts: List[str] = None,
         show_progress: bool = True,
         *,
         averaging: bool = False,
@@ -45,88 +45,147 @@ class ContextualizedEmbedder:
         """Generate contextualized embeddings of words in contexts.
         
         Args:
-            target_texts List[str]: list of texts to use as contexts
             words List[int]: list of words to extract contextualized embeddings of 
             layers_id List[int]: layers of interest
+            target_texts List[str]: list of texts to use as contexts. If it is None, the method returns non contextual embeddings of words
             averaging (bool): if words are composed of sub-tokens, return the average between them. If set to false, we use the embedding of the
-            first sub-token. Default: False
+                first sub-token. Default: False
             return_static (bool): returns the static word embedding before positional and token_type summation. Default: False
         
         Returns:
             Dict[int, List[numpy.array]]: for each integer in 'layers_id', return a list of numpy arrays each corresponding to the contextualized
-            embedding of the word in 'words' at that layer. When computed, static word embeddings, have index -1.
+                embedding of the word in 'words' at that layer. When computed, static word embeddings, have index -1.
         
         """
 
+        is_contextual = target_texts is not None
+        
+        if not is_contextual:
+            print("Target texts is None: extracting non contextualized embeddings.")
+        
         words = [f" {word.strip()}" for word in words]
-
-        original = pd.DataFrame({"text": target_texts, "words": words})
-
-        test_dataset = datasets.Dataset.from_pandas(original)
-
-        def tokenizer_function(examples):
-            text_inputs = self.tokenizer(examples["text"], max_length=self.max_length, padding="max_length", truncation=True)
-            word_inputs = self.tokenizer(examples["words"], max_length=20, padding="max_length", truncation=True,
-                                         add_special_tokens=False)
-
-            examples["input_ids"] = text_inputs.input_ids
-            examples["attention_mask"] = text_inputs.attention_mask
-            examples["words_input_ids"] = word_inputs.input_ids
-
-            return examples
-
-        encoded_test = test_dataset.map(tokenizer_function, remove_columns=["text", "words"], desc="Text tokenization")
-        encoded_test.set_format("pt")
-
-        dl = DataLoader(encoded_test, batch_size=batch_size, shuffle=False, pin_memory=True)
-
-        embs = defaultdict(list)
-        pbar = tqdm(total=len(dl), position=0, disable=not show_progress)
-
-        for batch in dl:
+        
+        # Extract contextualized embeddings
+        if is_contextual:
+            assert len(target_texts) == len(words)
             
-            words_ids = batch["words_input_ids"]
-            pbar.update(1)
-            del batch["words_input_ids"]
-            
-            assert words_ids.shape[0] == batch["input_ids"].shape[0]
-            
-            batch = {k: v.to(self.device) for k, v in batch.items()}
+            original = pd.DataFrame({"text": target_texts, "words": words})
+            test_dataset = datasets.Dataset.from_pandas(original)
 
-            features = self.model(**batch)["hidden_states"]
+            def tokenizer_function(examples):
+                text_inputs = self.tokenizer(examples["text"], max_length=self.max_length, padding="max_length", truncation=True)
+                word_inputs = self.tokenizer(examples["words"], max_length=20, padding="max_length", truncation=True,
+                                             add_special_tokens=False)
 
-            for layer in layers_id:
-                layer_features = features[layer]
+                examples["input_ids"] = text_inputs.input_ids
+                examples["attention_mask"] = text_inputs.attention_mask
+                examples["words_input_ids"] = word_inputs.input_ids
 
-                try:
-                    idx = [
-                        self.find_sub_list(self.subset_of_tokenized(tok_word.tolist()), input_ids.tolist())[0]
-                        for tok_word, input_ids in zip(words_ids, batch["input_ids"])
-                    ]
-                except IndexError as e:
-                    raise Exception("Index Error: do all the words occur in the respective sentences?")
+                return examples
 
-                if averaging:
-                    for embedded_sentence_tokens, (l_idx, r_idx) in zip(layer_features, idx):
-                        embs[layer].append(embedded_sentence_tokens[l_idx:r_idx, :].mean(0).detach().cpu().numpy())
-                else:
-                    for embedded_sentence_tokens, (l_idx, r_idx) in zip(layer_features, idx):
-                        embs[layer].append(embedded_sentence_tokens[l_idx:l_idx+1, :].mean(0).detach().cpu().numpy())
-                        
-                        
-            if return_static:
-                word_embeddings = self.model.get_input_embeddings()
+            encoded_test = test_dataset.map(tokenizer_function, remove_columns=["text", "words"], desc="Text tokenization")
+        
+            encoded_test.set_format("pt")
+
+            dl = DataLoader(encoded_test, batch_size=batch_size, shuffle=False, pin_memory=True)
+
+            embs = defaultdict(list)
+            pbar = tqdm(total=len(dl), position=0, disable=not show_progress)
+
+            for batch in dl:
                 
-                for tok_word in words_ids:
-                    w_ids = self.subset_of_tokenized(tok_word.tolist()) + [2, 3]
-                    w_embs = word_embeddings(torch.LongTensor(w_ids))
-                    
+                words_ids = batch["words_input_ids"]
+                pbar.update(1)
+                del batch["words_input_ids"]
+
+                assert words_ids.shape[0] == batch["input_ids"].shape[0]
+
+                batch = {k: v.to(self.device) for k, v in batch.items()}
+
+                features = self.model(**batch)["hidden_states"]
+
+                for layer in layers_id:
+                    layer_features = features[layer]
+
+                    try:
+                        idx = [
+                            self.find_sub_list(self.subset_of_tokenized(tok_word.tolist()), input_ids.tolist())[0]
+                            for tok_word, input_ids in zip(words_ids, batch["input_ids"])
+                        ]
+                    except IndexError as e:
+                        raise Exception("Index Error: do all the words occur in the respective sentences?")
+
                     if averaging:
-                        embs[-1].append(w_embs.mean(0).detach().cpu().numpy())
+                        for embedded_sentence_tokens, (l_idx, r_idx) in zip(layer_features, idx):
+                            embs[layer].append(embedded_sentence_tokens[l_idx:r_idx, :].mean(0).detach().cpu().numpy())
                     else:
-                        embs[-1].append(w_embs[0].detach().cpu().numpy())
+                        for embedded_sentence_tokens, (l_idx, r_idx) in zip(layer_features, idx):
+                            embs[layer].append(embedded_sentence_tokens[l_idx:l_idx+1, :].mean(0).detach().cpu().numpy())
+
+
+                if return_static:
+                    word_embeddings = self.model.get_input_embeddings()
+
+                    for tok_word in words_ids:
+                        w_ids = self.subset_of_tokenized(tok_word.tolist())
+                        w_embs = word_embeddings(torch.LongTensor(w_ids))
+
+                        if averaging:
+                            embs[-1].append(w_embs.mean(0).detach().cpu().numpy())
+                        else:
+                            embs[-1].append(w_embs[0].detach().cpu().numpy())
+
+            pbar.close()
+        
+        
+        else:
+            test_dataset = datasets.Dataset.from_pandas(pd.DataFrame({"words": words}))
+            encoded_test = test_dataset.map(
+                lambda e: self.tokenizer(
+                    e["words"],
+                    max_length=20,
+                    padding="max_length",
+                    truncation=True,
+                    add_special_tokens=False
+                ),
+                remove_columns=["words"],
+                desc="Text tokenization",
+                batched=True
+            )
+            encoded_test.set_format("pt")
+            dl = DataLoader(encoded_test, batch_size=batch_size, shuffle=False, pin_memory=True)
+            embs = defaultdict(list)
+            pbar = tqdm(total=len(dl), position=0, disable=not show_progress)
             
-        pbar.close()
+            for batch in dl:
+
+                batch = {k: v.to(self.device) for k, v in batch.items()}
+                features = self.model(**batch)["hidden_states"]
+
+                for layer in layers_id:
+                    layer_features = features[layer] # bs, seq_length, hidden_size
+
+                    for layer_feat, attn_mask in zip(layer_features, batch["attention_mask"]):
+                        input_len = attn_mask.sum().item()
+                        emb = layer_feat[:input_len].mean(0) if averaging else layer_feat[0]
+                        embs[layer].append(emb.detach().cpu().numpy())
+
+                if return_static:
+                    word_embeddings = self.model.get_input_embeddings()
+
+                    for tok_word, attn_mask in zip(batch["input_ids"], batch["attention_mask"]):
+                        input_len = attn_mask.sum().item()
+                        w_ids = tok_word[:input_len]
+                        w_embs = word_embeddings(w_ids)
+
+                        if averaging:
+                            embs[-1].append(w_embs.mean(0).detach().cpu().numpy())
+                        else:
+                            embs[-1].append(w_embs[0].detach().cpu().numpy())
+
+            pbar.close()
+                
         
        
         return embs
+    
