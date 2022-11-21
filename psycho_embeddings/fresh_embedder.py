@@ -134,7 +134,7 @@ class ContextualizedEmbedder:
 
                         for tok_word in words_ids:
                             w_ids = self.subset_of_tokenized(tok_word.tolist())
-                            w_embs = word_embeddings(torch.LongTensor(w_ids))
+                            w_embs = word_embeddings(torch.LongTensor(w_ids).to(self.device))
 
                             if averaging:
                                 embs[-1].append(w_embs.mean(0).detach().cpu().numpy())
