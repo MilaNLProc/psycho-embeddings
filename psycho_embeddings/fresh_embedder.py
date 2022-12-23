@@ -42,8 +42,8 @@ class ContextualizedEmbedder:
     def embed(
         self,
         words: List[str],
-        layers_id: List[int],
         target_texts: List[str],
+        layers_id: List[int],
         batch_size: int = 1,
         show_progress: bool = True,
         *,
@@ -69,6 +69,9 @@ class ContextualizedEmbedder:
                 embedding of the word in 'words' at that layer. When computed, static word embeddings, have index -1.
 
         """
+        if (not words) or (not layers_id) or (not target_texts):
+            raise ValueError("words, target_texts, and layers_id cannot be None")
+
         words = [f" {word.strip()}" for word in words]
         embs = defaultdict(list)
 
