@@ -13,7 +13,7 @@ pip install -r requirements.txt
 
 ## Examples
 
-**Extract the contextualised embedding of words in context** \
+**Extract the contextualised embedding of words in context**
 
 You can request representations:
 
