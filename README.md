@@ -13,8 +13,9 @@ pip install -r requirements.txt
 
 ## Examples
 
-**Extract the contextualised embedding of words in context** You can
-request representations:
+**Extract the contextualised embedding of words in context** \
+
+You can request representations:
 
 -   for one or more layers (`layers_id`)
 -   including static non-contextualised vectors (`return_static`)
