@@ -22,7 +22,7 @@ You can request representations:
 
 ```python
 from psycho_embeddings import ContextualizedEmbedder
-model = ContextualizedEmbedder("bert-base-cased")
+model = ContextualizedEmbedder("bert-base-cased", max_length=128)
 
 embeddings = model.embed(
     words=["play", "play"],
