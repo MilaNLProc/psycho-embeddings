@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import List
+from typing import List, Tuple
 
 import datasets
 import pandas as pd
@@ -9,8 +9,48 @@ from tqdm import tqdm
 from transformers import *
 
 
+def find_sub_list(sl: List, l: List):
+    """Find the spans a sublist is found in a list.
+
+    Parameters
+    ----------
+    sl : List
+        Sublist to search.
+    l : List
+        List to search "sl" in.
+
+    Returns
+    -------
+    List[Tuple[int,int]]
+        List of tuples, each containing start and end index of the span found.
+
+    """
+
+    results = list()
+    sll = len(sl)
+
+    for ind in (i for i, e in enumerate(l) if e == sl[0]):
+        if l[ind : ind + sll] == sl:
+            results.append((ind, ind + sll))
+
+    return results
+
+
 class ContextualizedEmbedder:
-    def __init__(self, model_name: str, max_length: int, device: str = "cuda"):
+    def __init__(self, model_name: str, max_length: int, device: str = "cpu"):
+        """
+        Contextualized embedder as a wrapper of HuggingFace models.
+
+        Parameters
+        ----------
+        model_name : str
+            A string identifying a model on the HuggingFace Hub. We will load the model with AutoModel.from_pretrained.
+        max_length : int
+            Max length in numbers of tokens supported by our embedder. Note that models have a pre-defined maximum supported length (usually 512, 768, or 1024), be sure to check it in advance. Use it if you expect to encode shorter texts to speed up execution.
+        device : str, default "cpu"
+            Device to run the execution on. Use "cuda" or "cuda:0" if available to speed up execution.
+        """
+
         self.model_name = model_name
         self.model = AutoModel.from_pretrained(
             model_name, output_hidden_states=True
@@ -19,16 +59,6 @@ class ContextualizedEmbedder:
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.max_length = max_length
         self.device = device
-
-    def find_sub_list(self, sl, l):
-        results = list()
-        sll = len(sl)
-
-        for ind in (i for i, e in enumerate(l) if e == sl[0]):
-            if l[ind : ind + sll] == sl:
-                results.append((ind, ind + sll))
-
-        return results
 
     def subset_of_tokenized(self, list_of_tokens: List[int]):
         """
@@ -51,7 +81,7 @@ class ContextualizedEmbedder:
         return_static: bool = False,
         add_special_tokens: bool = True,
     ):
-        """Generate contextualized embeddings of words in contexts.
+        """Extract contextualized embeddings of words in contexts.
 
         Args:
             words List[int]: list of words to extract contextualized embeddings of
@@ -130,7 +160,7 @@ class ContextualizedEmbedder:
 
                 try:
                     idx = [
-                        self.find_sub_list(
+                        find_sub_list(
                             self.subset_of_tokenized(tok_word.tolist()),
                             input_ids.tolist(),
                         )[0]
