@@ -1,6 +1,7 @@
 # Psycho Embeddings
 
-A Python package to extract contextualised embeddings.
+A Python package to extract contextualised embeddings. Given a sentence (e.g., the cat is on the table)
+and a word (e.g., cat) we can extract the embedding of the word cat in the sentence.
 
 ## Getting Started
 
@@ -32,6 +33,10 @@ embeddings = model.embed(
     return_static=True,
 )
 ```
+
+## Reference
+
+
 
 ## Credits
 
